@@ -272,6 +272,12 @@ services:
 pip install pyautogui Pillow websockets
 ```
 
+### Android 客户端
+
+仓库内的 `android/` 是原生 Android 客户端。它复用同一套 WebSocket v2 协议：保持连接，只有插件发出截图请求时才通过系统录屏权限采集并上传 JPEG。
+
+使用 Android Studio 打开 `android/` 目录，构建 `app` 模块的 debug APK。安装后填写 `ws://` 或 `wss://` 服务地址和插件配置中的令牌，点击“授权录屏并连接”。Android 系统会显示一次录屏授权提示；授权期间，插件调用 `/kp` 即可请求手机当前屏幕。
+
 ### 启动客户端
 
 在本地电脑运行：
