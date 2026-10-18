@@ -25,10 +25,15 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
-import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.handshake.ServerHandshake;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okio.ByteString;
 
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
@@ -91,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
             if (socket != null) socket.close();
             capabilitiesSent = false;
             socket = new ScreenSocket(new URI(serverUrl.getText().toString().trim()));
-            socket.connect();
+            socket.open();
             showStatus("正在连接远程识屏服务...");
         } catch (Exception e) {
             showStatus("服务器地址无效：" + e.getMessage());
@@ -192,13 +197,42 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
-    private final class ScreenSocket extends WebSocketClient {
+    private final class ScreenSocket extends WebSocketListener {
+        private final URI serverUri;
+        private final OkHttpClient client = new OkHttpClient();
+        private WebSocket connection;
+        private boolean connected;
+
         ScreenSocket(URI serverUri) {
-            super(serverUri);
+            this.serverUri = serverUri;
+        }
+
+        void open() {
+            Request request = new Request.Builder().url(serverUri.toString()).build();
+            connection = client.newWebSocket(request, this);
+        }
+
+        boolean isOpen() {
+            return connected && connection != null;
+        }
+
+        void send(String message) {
+            if (connection != null) connection.send(message);
+        }
+
+        void send(byte[] bytes) {
+            if (connection != null) connection.send(ByteString.of(bytes));
+        }
+
+        void close() {
+            connected = false;
+            if (connection != null) connection.close(1000, "client closed");
+            client.dispatcher().executorService().shutdown();
         }
 
         @Override
-        public void onOpen(ServerHandshake handshake) {
+        public void onOpen(WebSocket webSocket, Response response) {
+            connected = true;
             String token = authToken.getText().toString();
             if (!token.isEmpty()) {
                 try {
@@ -214,7 +248,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onMessage(String message) {
+        public void onMessage(WebSocket webSocket, String message) {
             try {
                 JSONObject payload = new JSONObject(message);
                 String type = payload.optString("type");
@@ -237,12 +271,14 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onClose(int code, String reason, boolean remote) {
+        public void onClosed(WebSocket webSocket, int code, String reason) {
+            connected = false;
             showStatus("连接已关闭：" + reason);
         }
 
         @Override
-        public void onError(Exception error) {
+        public void onFailure(WebSocket webSocket, Throwable error, Response response) {
+            connected = false;
             showStatus("连接错误：" + error.getMessage());
         }
     }
